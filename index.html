@@ -4,56 +4,67 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Secure & Transparent Online Voting System</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body {
     font-family: Arial, sans-serif;
     background: url('https://images.pexels.com/photos/207692/pexels-photo-207692.jpeg') no-repeat center center fixed;
-    background: #f4f6f9;
+    background-size: cover;
+    color: #fff;
     text-align: center;
     margin: 0;
     padding: 0;
 }
 header {
-    background-color: #004aad;
+    background: linear-gradient(90deg,#004aad,#00c6ff);
     color: white;
-    padding: 15px;
-    font-size: 22px;
+    padding: 20px;
+    font-size: 24px;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
 }
 section {
     margin: 20px auto;
-    padding: 20px;
-    background: white;
-    border-radius: 10px;
+    padding: 25px;
+    background: rgba(255,255,255,0.95);
+    color: #333;
+    border-radius: 15px;
     width: 90%;
-    max-width: 500px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    max-width: 600px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
 }
 input, button {
-    margin: 8px 0;
-    padding: 10px;
+    margin: 10px 0;
+    padding: 12px;
     width: 90%;
-    border: 1px solid #ccc;
-    border-radius: 5px;
-    font-size: 14px;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
 }
+input { border: 2px solid #ccc; }
 button {
-    background: #004aad;
+    background: linear-gradient(90deg,#004aad,#00c6ff);
     color: white;
     cursor: pointer;
+    font-weight: bold;
+    transition: 0.3s;
 }
-button:hover { background: #0066cc; }
-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-th { background: #004aad; color: white; }
-.hidden { display: none; }
-.flash { color: red; margin: 10px 0; }
+button:hover { background: linear-gradient(90deg,#00c6ff,#004aad); }
+table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+th, td { border: 1px solid #ccc; padding: 10px; text-align: center; }
+th { background: #004aad; color: white; cursor: pointer; }
+.flash { color: red; margin: 10px 0; font-weight: bold; }
+.winner-row { background-color: #d4edda !important; font-weight: bold; }
+#candidateList div { margin: 15px 0; padding: 10px; border-radius: 10px; background: #e3f2fd; color: #004aad; }
+canvas { margin-top: 20px; max-width: 100%; }
+@media(max-width:500px){ input, button{width:95%;} }
 </style>
 </head>
 <body>
 
 <header>🗳️ Secure & Transparent Online Voting System</header>
 
-<!-- HOME PAGE (Voter login + Candidate Registration) -->
+<!-- HOME PAGE -->
 <section id="homeSection">
     <h2>Welcome to the Online Voting System</h2>
 
@@ -64,7 +75,7 @@ th { background: #004aad; color: white; }
     <button onclick="registerVoter()">Register</button>
     <button onclick="loginVoter()">Login</button>
 
-    <hr style="margin:25px 0;">
+    <hr style="margin:25px 0; border:1px solid #004aad;">
 
     <h3>Register Candidate</h3>
     <div id="candMsg" class="flash"></div>
@@ -75,7 +86,10 @@ th { background: #004aad; color: white; }
     <h4 style="margin-top:20px;">Registered Candidates</h4>
     <table>
         <thead>
-            <tr><th>Name</th><th>College</th></tr>
+            <tr>
+                <th onclick="sortCandidates('name')">Name ⬍</th>
+                <th onclick="sortCandidates('college')">College ⬍</th>
+            </tr>
         </thead>
         <tbody id="candidateListTable"></tbody>
     </table>
@@ -101,205 +115,129 @@ th { background: #004aad; color: white; }
         <tbody id="resultsBody"></tbody>
     </table>
     <h3 id="winnerDisplay"></h3>
+    <canvas id="resultsChart"></canvas>
     <button onclick="resetSystem()">🔄 Reset System</button>
 </section>
 
 <script>
-/* -------------------- Data Setup -------------------- */
+// -------------------- Data --------------------
 let candidates = JSON.parse(localStorage.getItem("candidates")) || [];
 let voters = JSON.parse(localStorage.getItem("voters")) || {};
 let currentUser = null;
-
-// Time restriction (9am–6pm)
+let sortDirection = 1;
+let chart = null;
 const startHour = 9, endHour = 18;
 
-/* -------------------- Candidate Registration -------------------- */
+// -------------------- Candidate --------------------
 function registerCandidate() {
     const name = document.getElementById("candName").value.trim();
     const college = document.getElementById("candCollege").value.trim();
     const msg = document.getElementById("candMsg");
     msg.innerText = "";
 
-    if (candidates.length >= 5) {
-        msg.innerText = "Maximum 5 candidates already registered.";
-        return;
-    }
-    if (!name || !college) {
-        msg.innerText = "Please enter both name and college.";
-        return;
-    }
+    if (!name || !college) { msg.style.color="red"; msg.innerText="Enter both name and college."; return; }
+    if (candidates.some(c=>c.name.toLowerCase()===name.toLowerCase()&&c.college.toLowerCase()===college.toLowerCase())) {
+        msg.style.color="red"; msg.innerText="Candidate already registered."; return; }
+    if (candidates.length>=5) { msg.style.color="red"; msg.innerText="Maximum 5 candidates allowed."; return; }
 
-    candidates.push({ name, college, votes: 0 });
+    candidates.push({name,college,votes:0});
     localStorage.setItem("candidates", JSON.stringify(candidates));
-
-    msg.style.color = "green";
-    msg.innerText = "Candidate registered successfully!";
-    document.getElementById("candName").value = "";
-    document.getElementById("candCollege").value = "";
-
+    msg.style.color="green"; msg.innerText="Candidate registered successfully!";
+    document.getElementById("candName").value=""; document.getElementById("candCollege").value="";
     updateCandidateTable();
 }
 
-/* -------------------- Update Candidate Table -------------------- */
 function updateCandidateTable() {
     const tableBody = document.getElementById("candidateListTable");
     tableBody.innerHTML = "";
-    candidates.forEach(c => {
-        tableBody.innerHTML += `<tr><td>${c.name}</td><td>${c.college}</td></tr>`;
-    });
+    if(candidates.length===0){ tableBody.innerHTML=`<tr><td colspan="2">No candidates registered yet.</td></tr>`; return; }
+    candidates.forEach(c=>{ tableBody.innerHTML+=`<tr><td>${c.name}</td><td>${c.college}</td></tr>`; });
 }
 
-/* Initialize table on page load */
-updateCandidateTable();
+function sortCandidates(key) {
+    candidates.sort((a,b)=>a[key].localeCompare(b[key])*sortDirection);
+    sortDirection*=-1; updateCandidateTable();
+}
 
-/* -------------------- Voter Registration -------------------- */
+// -------------------- Voter --------------------
 function registerVoter() {
-    const u = document.getElementById("voterUser").value.trim();
-    const p = document.getElementById("voterPass").value.trim();
-    const msg = document.getElementById("voterMsg");
-    msg.innerText = "";
-
-    if (Object.keys(voters).length >= 50) {
-        msg.innerText = "Maximum voter limit (50) reached.";
-        return;
-    }
-    if (!u || !p) {
-        msg.innerText = "Enter both username and password.";
-        return;
-    }
-    if (voters[u]) {
-        msg.innerText = "User already exists.";
-        return;
-    }
-
-    voters[u] = { password: p, hasVoted: false };
-    localStorage.setItem("voters", JSON.stringify(voters));
-    msg.style.color = "green";
-    msg.innerText = "Registered successfully! You can now login.";
+    const u=document.getElementById("voterUser").value.trim();
+    const p=document.getElementById("voterPass").value.trim();
+    const msg=document.getElementById("voterMsg");
+    msg.innerText="";
+    if(!u||!p){ msg.innerText="Enter both username and password."; return; }
+    if(voters[u]){ msg.innerText="User already exists."; return; }
+    voters[u]={password:p,hasVoted:false};
+    localStorage.setItem("voters",JSON.stringify(voters));
+    msg.style.color="green"; msg.innerText="Registered successfully! You can now login.";
 }
 
-/* -------------------- Voter Login -------------------- */
 function loginVoter() {
-    const u = document.getElementById("voterUser").value.trim();
-    const p = document.getElementById("voterPass").value.trim();
-    const msg = document.getElementById("voterMsg");
-    msg.innerText = "";
-
-    if (!voters[u] || voters[u].password !== p) {
-        msg.innerText = "Invalid credentials.";
-        return;
-    }
-
-    if (candidates.length < 2) {
-        msg.innerText = "Voting cannot start — at least 2 candidates required.";
-        return;
-    }
-
-    currentUser = u;
-    document.getElementById("voterName").innerText = u;
+    const u=document.getElementById("voterUser").value.trim();
+    const p=document.getElementById("voterPass").value.trim();
+    const msg=document.getElementById("voterMsg"); msg.innerText="";
+    if(!voters[u]||voters[u].password!==p){ msg.innerText="Invalid credentials."; return; }
+    if(candidates.length<2){ msg.innerText="Voting cannot start — at least 2 candidates required."; return; }
+    currentUser=u;
+    document.getElementById("voterName").innerText=u;
     document.getElementById("homeSection").classList.add("hidden");
     document.getElementById("voteSection").classList.remove("hidden");
     loadCandidates();
     checkVotingTime();
 }
 
-/* -------------------- Load Candidates for Voting -------------------- */
+// -------------------- Voting --------------------
 function loadCandidates() {
-    const list = document.getElementById("candidateList");
-    list.innerHTML = "";
-    candidates.forEach((c, index) => {
-        list.innerHTML += `
-            <div>
-                <p><strong>${c.name}</strong><br>${c.college}</p>
-                <input type="radio" name="vote" value="${index}">
-            </div>
-        `;
-    });
+    const list=document.getElementById("candidateList");
+    list.innerHTML="";
+    candidates.forEach((c,i)=>{ list.innerHTML+=`<div><p><strong>${c.name}</strong><br>${c.college}</p><input type="radio" name="vote" value="${i}"></div>`; });
 }
 
-/* -------------------- Voting -------------------- */
 function castVote() {
-    const now = new Date();
-    const hour = now.getHours();
-    if (hour < startHour || hour >= endHour) {
-        alert("Voting time has ended. Voting allowed only between 9 AM and 6 PM.");
-        showResults();
-        return;
-    }
-
-    if (voters[currentUser].hasVoted) {
-        alert("You already voted!");
-        return;
-    }
-
-    const selected = document.querySelector('input[name="vote"]:checked');
-    if (!selected) {
-        alert("Please select a candidate.");
-        return;
-    }
-
-    const index = parseInt(selected.value);
-    candidates[index].votes++;
-    voters[currentUser].hasVoted = true;
-
-    localStorage.setItem("candidates", JSON.stringify(candidates));
-    localStorage.setItem("voters", JSON.stringify(voters));
-
-    alert("✅ Your vote has been recorded securely!");
+    if(voters[currentUser].hasVoted){ alert("You already voted!"); return; }
+    const selected=document.querySelector('input[name="vote"]:checked');
+    if(!selected){ alert("Select a candidate."); return; }
+    candidates[parseInt(selected.value)].votes++;
+    voters[currentUser].hasVoted=true;
+    localStorage.setItem("candidates",JSON.stringify(candidates));
+    localStorage.setItem("voters",JSON.stringify(voters));
+    alert("✅ Your vote has been recorded!");
+    showResults();
 }
 
-/* -------------------- Voting Time Restriction -------------------- */
-function checkVotingTime() {
-    const now = new Date();
-    const hour = now.getHours();
-    const msg = document.getElementById("timeNotice");
-    if (hour < startHour || hour >= endHour) {
-        msg.innerText = "Voting is closed. Results are available.";
-        showResults();
-    } else {
-        msg.innerText = `Voting open until 6:00 PM. Current time: ${now.toLocaleTimeString()}`;
-    }
-}
-
-/* -------------------- Display Results -------------------- */
+// -------------------- Results --------------------
 function showResults() {
     document.getElementById("voteSection").classList.add("hidden");
     document.getElementById("resultsSection").classList.remove("hidden");
-
-    const body = document.getElementById("resultsBody");
-    body.innerHTML = "";
-    let maxVotes = 0, winner = "No votes yet";
-
-    candidates.forEach(c => {
-        body.innerHTML += `<tr><td>${c.name}</td><td>${c.votes}</td></tr>`;
-        if (c.votes > maxVotes) {
-            maxVotes = c.votes;
-            winner = `${c.name} (${c.college})`;
-        }
-    });
-
-    document.getElementById("winnerDisplay").innerText = `🏆 Winner: ${winner}`;
+    const body=document.getElementById("resultsBody"); body.innerHTML="";
+    let maxVotes=0; candidates.forEach(c=>{ if(c.votes>maxVotes) maxVotes=c.votes; });
+    candidates.forEach(c=>{ const rowClass=c.votes===maxVotes&&maxVotes>0?"winner-row":""; body.innerHTML+=`<tr class="${rowClass}"><td>${c.name}</td><td>${c.votes}</td></tr>`; });
+    const winner=candidates.find(c=>c.votes===maxVotes);
+    document.getElementById("winnerDisplay").innerText=maxVotes>0?`🏆 Winner: ${winner.name} (${winner.college})`:"No votes yet.";
+    updateChart();
 }
 
-/* -------------------- Logout -------------------- */
-function logout() {
-    currentUser = null;
-    document.getElementById("voteSection").classList.add("hidden");
-    document.getElementById("homeSection").classList.remove("hidden");
+function getRandomColor(){ const r=Math.floor(150+Math.random()*100); const g=Math.floor(150+Math.random()*100); const b=Math.floor(150+Math.random()*100); return `rgba(${r},${g},${b},0.7)`; }
+
+function updateChart(){
+    const ctx=document.getElementById('resultsChart').getContext('2d');
+    const labels=candidates.map(c=>c.name); const votesData=candidates.map(c=>c.votes);
+    const colors=candidates.map(c=>getRandomColor());
+    if(chart) chart.destroy();
+    chart=new Chart(ctx,{type:'bar',data:{labels:labels,datasets:[{label:'Votes',data:votesData,backgroundColor:colors,borderColor:colors.map(c=>c.replace('0.7','1')),borderWidth:1}]},options:{responsive:true,scales:{y:{beginAtZero:true,precision:0}}}});
 }
 
-/* -------------------- Reset System -------------------- */
-function resetSystem() {
-    if (confirm("Reset everything? This will clear all data.")) {
-        localStorage.clear();
-        candidates = [];
-        voters = {};
-        currentUser = null;
-        location.reload();
-    }
-}
+// -------------------- Logout & Reset --------------------
+function logout(){ currentUser=null; document.getElementById("voteSection").classList.add("hidden"); document.getElementById("homeSection").classList.remove("hidden"); }
+function resetSystem(){ if(confirm("Reset everything? This will clear all data.")){ localStorage.clear(); candidates=[]; voters={}; currentUser=null; location.reload(); } }
+
+// -------------------- Voting Time --------------------
+function checkVotingTime(){ const now=new Date(); const hour=now.getHours(); const msg=document.getElementById("timeNotice");
+if(hour<startHour||hour>=endHour){ msg.innerText="Voting is closed. Results are available."; showResults(); }else{ msg.innerText=`Voting open until 6:00 PM. Current time: ${now.toLocaleTimeString()}`; } }
+
+// -------------------- Initialize --------------------
+window.onload=updateCandidateTable;
 </script>
+
 </body>
 </html>
-
-
